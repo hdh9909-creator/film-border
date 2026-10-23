@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Film Border">
+<meta name="theme-color" content="#ffffff">
+<title>Film Border Maker</title>
+
+<script>
+const manifestData = {
+  name: "Film Border Maker", short_name: "Film Border",
+  description: "필름 사진에 테두리를 추가하는 도구",
+  start_url: "./", display: "standalone",
+  background_color: "#f5f5f3", theme_color: "#1a1a1a", orientation: "any",
+  icons: [
+    { src: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%231a1a1a'/><text x='96' y='128' font-size='100' text-anchor='middle'>🎞</text></svg>`), sizes: "192x192", type: "image/svg+xml" },
+    { src: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%231a1a1a'/><text x='256' y='340' font-size='280' text-anchor='middle'>🎞</text></svg>`), sizes: "512x512", type: "image/svg+xml" }
+  ]
+};
+const blob = new Blob([JSON.stringify(manifestData)], {type:'application/json'});
+const linkEl = document.createElement('link');
+linkEl.rel = 'manifest'; linkEl.href = URL.createObjectURL(blob);
+document.head.appendChild(linkEl);
+</script>
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%231a1a1a'/%3E%3Ctext x='90' y='125' font-size='90' text-anchor='middle'%3E%F0%9F%8E%9E%3C/text%3E%3C/svg%3E">
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f5f5f3;
+  --surface: #ffffff;
+  --border: #e0ddd8;
+  --text: #1a1a1a;
+  --muted: #888;
+  --hint: #bbb;
+  --accent: #1a1a1a;
+  --r: 12px; --rs: 8px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100vh; min-height: 100dvh;
+}
+
+/* ── 데스크톱: 패널 왼쪽, 미리보기 오른쪽 ── */
+.layout {
+  display: grid;
+  grid-template-columns: 560px 1fr;
+  grid-template-rows: 1fr;
+  min-height: 100vh; min-height: 100dvh;
+}
+.panel {
+  grid-column: 1; grid-row: 1;
+  background: var(--surface); border-right: 1px solid var(--border);
+  padding: 24px 20px 32px; overflow-y: auto;
+  height: 100vh; height: 100dvh; position: sticky; top: 0;
+}
+.preview-area {
+  grid-column: 2; grid-row: 1;
+  background: #dddbd7; display: flex; align-items: center;
+  justify-content: center; padding: 36px; overflow: auto;
+  /* 데스크톱: 뷰포트에 고정 */
+  position: sticky; top: 0;
+  height: 100vh; height: 100dvh;
+}
+
+/* ── 공통 컴포넌트 ── */
+.app-title { font-size: 14px; font-weight: 700; letter-spacing: .06em; margin-bottom: 20px; }
+
+.install-banner {
+  display: none; border-radius: var(--rs); padding: 10px 14px; margin-bottom: 12px;
+  font-size: 12px; align-items: center; gap: 10px; line-height: 1.4;
+}
+.install-banner.show { display: flex; }
+.install-banner.pwa  { background: var(--accent); color: #fff; }
+.install-banner.warn { background: #fff3cd; color: #7a5c00; border: 1px solid #f0c040; }
+.install-banner span { flex: 1; }
+.install-banner button {
+  background: rgba(0,0,0,.12); border: none; color: inherit;
+  border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.install-banner.pwa button { background: rgba(255,255,255,.2); color: #fff; }
+.install-banner .close-x { background: none; padding: 2px 4px; opacity: .5; }
+.install-banner code {
+  background: rgba(0,0,0,.1); border-radius: 4px;
+  padding: 1px 5px; font-family: monospace; font-size: 11px; user-select: all;
+}
+
+.sec { margin-bottom: 16px; }
+
+.lbl {
+  font-size: 10px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 7px; display: block;
+}
+
+.sec-header {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text); background: var(--bg);
+  border-radius: 8px; padding: 7px 11px; margin-bottom: 12px; border: 1px solid var(--border);
+}
+
+hr.d { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+/* 업로드 */
+.upload-zone {
+  border: 1.5px dashed var(--border); border-radius: var(--r);
+  padding: 20px 14px; text-align: center; cursor: pointer;
+  background: var(--bg); transition: background .15s, border-color .15s;
+}
+.upload-zone:hover { background: #eeece9; border-color: #bbb; }
+.upload-zone .ico { font-size: 26px; margin-bottom: 6px; }
+.upload-zone p { font-size: 13px; color: var(--muted); }
+.upload-zone small { font-size: 11px; color: var(--hint); }
+#fileInput { display: none; }
+
+/* 칩 */
+.chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.chip {
+  font-size: 11px; padding: 4px 11px; border-radius: 20px;
+  border: 1px solid var(--border); cursor: pointer;
+  background: var(--surface); color: var(--muted);
+  transition: all .1s; white-space: nowrap; user-select: none;
+}
+.chip:hover { border-color: #999; color: var(--text); }
+.chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* 사용자 지정 비율 */
+.custom-ratio { display: none; align-items: center; gap: 6px; margin-top: 8px; }
+.custom-ratio.show { display: flex; }
+.custom-ratio input {
+  width: 50px; padding: 4px 7px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: #f5f5f3; color: #1a1a1a; outline: none;
+  -webkit-text-fill-color: #1a1a1a; -moz-appearance: textfield;
+}
+.custom-ratio input::-webkit-inner-spin-button,
+.custom-ratio input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+/* 슬라이더 */
+.srow { display: flex; align-items: center; gap: 10px; }
+.srow input[type=range] {
+  flex: 1; -webkit-appearance: none; height: 3px;
+  background: var(--border); border-radius: 2px; outline: none; cursor: pointer;
+}
+.srow input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 15px; height: 15px;
+  border-radius: 50%; background: var(--accent); cursor: pointer;
+}
+.sv { font-size: 12px; color: var(--muted); min-width: 16px; text-align: right; }
+.snum {
+  width: 58px; padding: 3px 7px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: #f5f5f3; color: #1a1a1a; outline: none; text-align: right;
+  -webkit-text-fill-color: #1a1a1a; -moz-appearance: textfield;
+}
+.snum::-webkit-inner-spin-button, .snum::-webkit-outer-spin-button { -webkit-appearance: none; }
+.snum:focus { border-color: #aaa; }
+
+/* 색상 행 */
+.color-row { display: flex; align-items: center; gap: 8px; }
+.color-row label { font-size: 12px; color: var(--muted); flex: 1; }
+input[type=color] {
+  width: 28px; height: 28px; border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer; padding: 2px; background: var(--surface);
+}
+
+/* 2열 레이아웃 */
+.two-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.two-cols > div { min-width: 0; }   /* grid child 오버플로 방지 */
+.gap-sub-lbl { font-size: 10px; color: var(--muted); margin-bottom: 5px; }
+/* srow 안 range가 grid cell에서 넘치지 않도록 */
+.srow { min-width: 0; }
+.srow input[type=range] { min-width: 0; }
+
+/* ── 텍스트 입력 행: label | input | B | color ── */
+/* 사진정보 & 텍스트입력 모두 같은 행 구조 사용 */
+.side-hd {
+  font-size: 10px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--hint); margin-bottom: 6px;
+}
+
+/* label(고정) | input(flex) | B | color */
+.trow {
+  display: grid;
+  grid-template-columns: 52px 1fr 28px 28px;
+  align-items: center; gap: 5px; margin-bottom: 6px;
+}
+.trow .rlbl { font-size: 11px; color: var(--muted); }
+.trow input[type=text] {
+  font-size: 12px; padding: 4px 7px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: #f5f5f3; color: #1a1a1a; outline: none; width: 100%;
+  -webkit-text-fill-color: #1a1a1a;
+}
+.trow input[type=text]:focus { border-color: #aaa; }
+.trow input[type=text]::placeholder { color: #bbb; -webkit-text-fill-color: #bbb; }
+
+.bb {
+  font-size: 10px; font-weight: 700; padding: 3px 0;
+  border-radius: 5px; border: 1px solid var(--border);
+  cursor: pointer; background: transparent;
+  color: var(--muted); width: 100%; transition: all .1s;
+}
+.bb.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* 다운로드 버튼 */
+.btn-dl {
+  width: 100%; padding: 11px; background: var(--accent); color: #fff;
+  border: none; border-radius: var(--rs); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: opacity .15s;
+}
+.btn-dl:hover { opacity: .82; }
+.btn-dl:disabled { opacity: .3; cursor: default; }
+
+/* 미리보기 */
+.preview-inner {
+  display: flex; flex-direction: column;
+  align-items: center; width: 100%; max-width: 860px;
+}
+#preview {
+  max-width: 100%; max-height: calc(100vh - 80px);
+  border-radius: 2px; box-shadow: 0 6px 36px rgba(0,0,0,.2);
+  display: none; image-rendering: auto;
+}
+.ph {
+  color: #aaa; font-size: 13px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.ph .big { font-size: 44px; }
+
+/* ══════════════════════════════════
+   모바일 (≤768px)
+   순서: 미리보기 → 패널(설정)
+══════════════════════════════════ */
+@media (max-width: 768px) {
+  .layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 미리보기: 위에 */
+  .preview-area {
+    order: 0;
+    padding: 16px;
+    padding-top: calc(16px + var(--safe-top));
+    min-height: 56vw;
+    position: sticky; top: 0; z-index: 10;
+    /* 스크롤 시 미리보기 고정 */
+    max-height: 60vw; overflow: hidden;
+  }
+  #preview { max-height: 56vw; max-width: 100%; }
+  .ph .big { font-size: 32px; }
+  .ph { font-size: 12px; gap: 6px; }
+
+  /* 패널: 아래에 */
+  .panel {
+    order: 1;
+    height: auto; position: static;
+    border-right: none; border-top: 1px solid var(--border);
+    padding: 16px 16px 32px;
+    padding-bottom: calc(32px + var(--safe-bot));
+    overflow-y: visible;
+  }
+
+  /* 앱 제목 모바일에서 숨김 (미리보기 위쪽에 공간 절약) */
+  .app-title { font-size: 13px; margin-bottom: 14px; }
+
+  /* 터치 타겟 확대 */
+  .chip { font-size: 12px; padding: 6px 12px; min-height: 36px; display: inline-flex; align-items: center; }
+  .trow { grid-template-columns: 48px 1fr 34px 28px; gap: 5px; margin-bottom: 8px; }
+  .trow input[type=text] { font-size: 14px; padding: 6px 7px; }
+  .bb { min-height: 32px; font-size: 11px; }
+  input[type=color] { width: 30px; height: 30px; }
+  .srow input[type=range] { height: 4px; }
+  .srow input[type=range]::-webkit-slider-thumb { width: 20px; height: 20px; }
+  .snum { width: 60px; padding: 5px 6px; font-size: 14px; }
+  .btn-dl { padding: 14px; font-size: 15px; }
+  .upload-zone { padding: 18px 14px; }
+  .upload-zone p { font-size: 14px; }
+  .two-cols { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ── 패널 (설정) ── -->
+<div class="panel">
+  <div class="app-title">🎞 Film Border Maker</div>
+
+  <!-- PWA 설치 배너 (https에서만 표시) -->
+  <div class="install-banner pwa" id="installBanner">
+    <span>📲 홈 화면에 추가해 앱처럼 사용하세요</span>
+    <button id="installBtn">설치</button>
+    <button class="close-x" id="installClose">✕</button>
+  </div>
+  <!-- file:// 경고 배너 -->
+  <div class="install-banner warn" id="fileBanner">
+    <span>⚠️ 앱 설치는 로컬 서버가 필요해요.<br>
+    터미널에서: <code>python3 -m http.server 8000</code><br>
+    그 다음 크롬에서 <code>http://localhost:8000</code> 열기</span>
+    <button class="close-x" id="fileClose">✕</button>
+  </div>
+
+  <!-- 업로드 -->
+  <div class="sec">
+    <span class="lbl">사진 업로드</span>
+    <div class="upload-zone" id="uploadArea">
+      <div class="ico">📷</div>
+      <p>클릭하거나 드래그해서 사진 올리기</p>
+      <small>JPG · PNG · WEBP</small>
+    </div>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+
+  <hr class="d">
+
+  <!-- 프레임 비율 -->
+  <div class="sec">
+    <span class="lbl">프레임 비율</span>
+    <div class="chips" id="ratioOpts">
+      <div class="chip on" data-w="0" data-h="0">원본</div>
+      <div class="chip" data-w="16" data-h="9">16:9</div>
+      <div class="chip" data-w="9" data-h="16">9:16</div>
+      <div class="chip" data-w="4" data-h="3">4:3</div>
+      <div class="chip" data-w="3" data-h="4">3:4</div>
+      <div class="chip" data-w="4" data-h="5">4:5</div>
+      <div class="chip" data-w="5" data-h="4">5:4</div>
+      <div class="chip" data-w="custom" data-h="custom">사용자 지정</div>
+    </div>
+    <div class="custom-ratio" id="customRatio">
+      <input type="number" id="customW" value="3" min="1" max="99">
+      <span style="color:var(--muted)">:</span>
+      <input type="number" id="customH" value="2" min="1" max="99">
+    </div>
+  </div>
+
+  <!-- 프레임 색상 -->
+  <div class="sec">
+    <span class="lbl">프레임 색상</span>
+    <div class="color-row">
+      <label>배경 · 여백 색상</label>
+      <input type="color" id="frameColor" value="#ffffff">
+    </div>
+  </div>
+
+  <!-- 테두리 -->
+  <div class="sec">
+    <span class="lbl">테두리</span>
+    <div class="color-row" style="margin-bottom:8px;">
+      <label>테두리 사용</label>
+      <div class="chips" id="borderToggle">
+        <div class="chip" data-v="on">켜기</div>
+        <div class="chip on" data-v="off">끄기</div>
+      </div>
+    </div>
+    <div id="borderOptions" style="display:none;">
+      <div class="color-row" style="margin-bottom:7px;">
+        <label>테두리 색상</label>
+        <input type="color" id="borderColor" value="#000000">
+      </div>
+      <div class="color-row">
+        <label>두께</label>
+        <div class="srow" style="flex:1;">
+          <input type="range" id="borderThick" min="1" max="100" value="3">
+          <input type="number" class="snum" id="borderThickNum" min="1" max="100" value="3">
+          <span class="sv">px</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 글꼴 -->
+  <div class="sec">
+    <span class="lbl">글꼴 (전체 적용)</span>
+    <div class="chips" id="fontOpts">
+      <div class="chip on" data-font="CourierNew">Courier</div>
+      <div class="chip" data-font="SpaceMono">Space Mono</div>
+      <div class="chip" data-font="IBMPlexMono">IBM Plex</div>
+      <div class="chip" data-font="HelveticaNeue">Helvetica</div>
+      <div class="chip" data-font="Inter">Inter</div>
+    </div>
+  </div>
+
+  <hr class="d">
+
+  <!-- ══ 사진 정보 ══ -->
+  <div class="sec-header">📋 사진 정보</div>
+
+  <div class="sec">
+    <span class="lbl">글자 크기</span>
+    <div class="srow">
+      <input type="range" id="infoFontSize" min="8" max="400" value="20">
+      <input type="number" class="snum" id="infoFontSizeNum" min="8" max="400" value="20">
+      <span class="sv">px</span>
+    </div>
+  </div>
+
+  <div class="sec">
+    <span class="lbl">사진 하단으로부터 거리</span>
+    <div class="srow">
+      <input type="range" id="infoGap" min="0" max="400" value="40">
+      <input type="number" class="snum" id="infoGapNum" min="0" max="400" value="40">
+      <span class="sv">px</span>
+    </div>
+  </div>
+
+  <!-- 사진 정보 — 세로 목록, 왼쪽/오른쪽 구분 라벨 표시 -->
+  <div class="sec">
+    <div class="side-hd" style="margin-bottom:8px;">← 왼쪽 정렬</div>
+    <div class="trow">
+      <span class="rlbl">카메라</span>
+      <input type="text" id="f_camera" placeholder="Nikon FM2">
+      <button class="bb on" data-t="f_camera">B</button>
+      <input type="color" id="c_camera" value="#1a1a1a">
+    </div>
+    <div class="trow">
+      <span class="rlbl">필름</span>
+      <input type="text" id="f_film" placeholder="Portra 400">
+      <button class="bb" data-t="f_film">B</button>
+      <input type="color" id="c_film" value="#1a1a1a">
+    </div>
+    <div class="trow">
+      <span class="rlbl">렌즈</span>
+      <input type="text" id="f_lens" placeholder="50mm f/1.4">
+      <button class="bb" data-t="f_lens">B</button>
+      <input type="color" id="c_lens" value="#1a1a1a">
+    </div>
+    <div class="side-hd" style="margin-top:10px; margin-bottom:8px;">→ 오른쪽 정렬</div>
+    <div class="trow">
+      <span class="rlbl">날짜</span>
+      <input type="text" id="f_date" placeholder="2025/06">
+      <button class="bb on" data-t="f_date">B</button>
+      <input type="color" id="c_date" value="#1a1a1a">
+    </div>
+    <div class="trow">
+      <span class="rlbl">장소</span>
+      <input type="text" id="f_location" placeholder="SEOUL">
+      <button class="bb" data-t="f_location">B</button>
+      <input type="color" id="c_location" value="#1a1a1a">
+    </div>
+    <div class="trow">
+      <span class="rlbl">작가</span>
+      <input type="text" id="f_author" placeholder="@username">
+      <button class="bb" data-t="f_author">B</button>
+      <input type="color" id="c_author" value="#1a1a1a">
+    </div>
+  </div>
+
+  <hr class="d">
+
+  <!-- ══ 텍스트 입력 ══ -->
+  <div class="sec-header">✏️ 텍스트 입력</div>
+
+  <div class="sec">
+    <span class="lbl">글자 크기</span>
+    <div class="srow">
+      <input type="range" id="txtFontSize" min="8" max="400" value="20">
+      <input type="number" class="snum" id="txtFontSizeNum" min="8" max="400" value="20">
+      <span class="sv">px</span>
+    </div>
+  </div>
+
+  <div class="sec">
+    <span class="lbl">사진으로부터 거리</span>
+    <div class="two-cols">
+      <div>
+        <div class="gap-sub-lbl">↑ 사진 위쪽</div>
+        <div class="srow">
+          <input type="range" id="txtGapTop" min="0" max="400" value="16">
+          <input type="number" class="snum" id="txtGapTopNum" min="0" max="400" value="16">
+          <span class="sv">px</span>
+        </div>
+      </div>
+      <div>
+        <div class="gap-sub-lbl">↓ 사진 아래쪽</div>
+        <div class="srow">
+          <input type="range" id="txtGapBot" min="0" max="400" value="16">
+          <input type="number" class="snum" id="txtGapBotNum" min="0" max="400" value="16">
+          <span class="sv">px</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 사진 위 텍스트: 세로 정렬 -->
+  <div class="sec">
+    <span class="lbl" style="margin-bottom:8px;">사진 위</span>
+    <div class="trow">
+      <span class="rlbl">왼쪽</span>
+      <input type="text" id="t_topleft" placeholder="텍스트">
+      <button class="bb" data-t="t_topleft">B</button>
+      <input type="color" id="c_topleft" value="#1a1a1a">
+    </div>
+    <div class="trow">
+      <span class="rlbl">가운데</span>
+      <input type="text" id="t_topcenter" placeholder="텍스트">
+      <button class="bb" data-t="t_topcenter">B</button>
+      <input type="color" id="c_topcenter" value="#1a1a1a">
+    </div>
+    <div class="trow">
+      <span class="rlbl">오른쪽</span>
+      <input type="text" id="t_topright" placeholder="텍스트">
+      <button class="bb" data-t="t_topright">B</button>
+      <input type="color" id="c_topright" value="#1a1a1a">
+    </div>
+  </div>
+
+  <!-- 사진 아래 텍스트: 세로 정렬 -->
+  <div class="sec">
+    <span class="lbl" style="margin-bottom:8px;">사진 아래</span>
+    <div class="trow">
+      <span class="rlbl">왼쪽</span>
+      <input type="text" id="t_botleft" placeholder="텍스트">
+      <button class="bb" data-t="t_botleft">B</button>
+      <input type="color" id="c_botleft" value="#1a1a1a">
+    </div>
+    <div class="trow">
+      <span class="rlbl">가운데</span>
+      <input type="text" id="t_botcenter" placeholder="텍스트">
+      <button class="bb" data-t="t_botcenter">B</button>
+      <input type="color" id="c_botcenter" value="#1a1a1a">
+    </div>
+    <div class="trow">
+      <span class="rlbl">오른쪽</span>
+      <input type="text" id="t_botright" placeholder="텍스트">
+      <button class="bb" data-t="t_botright">B</button>
+      <input type="color" id="c_botright" value="#1a1a1a">
+    </div>
+  </div>
+
+  <hr class="d">
+
+  <!-- 파일명 -->
+  <div class="sec">
+    <span class="lbl">파일명</span>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <input type="text" id="filename" placeholder="자동 생성됨"
+        style="flex:1; font-size:13px; padding:6px 9px; border:1px solid var(--border);
+               border-radius:6px; background:#f5f5f3; color:#1a1a1a;
+               -webkit-text-fill-color:#1a1a1a; outline:none;">
+      <span style="font-size:12px; color:var(--muted); white-space:nowrap;">.png</span>
+    </div>
+    <p style="font-size:11px; color:var(--hint); margin-top:5px;">비워두면 필름 + 날짜로 자동 생성</p>
+  </div>
+
+  <button class="btn-dl" id="dlBtn" disabled>↓ PNG로 저장</button>
+</div>
+
+<!-- ── 미리보기 ── -->
+<div class="preview-area">
+  <div class="preview-inner">
+    <canvas id="preview"></canvas>
+    <div class="ph" id="ph">
+      <div class="big">🎞</div>
+      <span>사진을 업로드하면<br>미리보기가 나타나요</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- /layout -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+
+<script>
+/* ── PWA ── */
+let deferredPrompt = null;
+const installBanner = document.getElementById('installBanner');
+const fileBanner    = document.getElementById('fileBanner');
+
+// file:// 프로토콜이면 설치 안내 표시 (PWA는 http/https에서만 동작)
+if (location.protocol === 'file:') {
+  fileBanner.classList.add('show');
+}
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); deferredPrompt = e;
+  installBanner.classList.add('show');
+});
+document.getElementById('installBtn').addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt(); await deferredPrompt.userChoice;
+  deferredPrompt = null; installBanner.classList.remove('show');
+});
+document.getElementById('installClose').addEventListener('click', () => installBanner.classList.remove('show'));
+document.getElementById('fileClose').addEventListener('click', () => fileBanner.classList.remove('show'));
+window.addEventListener('appinstalled', () => installBanner.classList.remove('show'));
+
+if ('serviceWorker' in navigator) {
+  const swCode = `
+const CACHE='film-border-v3';
+self.addEventListener('install',e=>{self.skipWaiting();});
+self.addEventListener('activate',e=>{
+  e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
+  self.clients.claim();
+});
+self.addEventListener('fetch',e=>{
+  e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{
+    if(res.ok&&e.request.url.startsWith('https:')){
+      const c=res.clone();caches.open(CACHE).then(ca=>ca.put(e.request,c));
+    }
+    return res;
+  }).catch(()=>new Response('offline'))));
+});`;
+  navigator.serviceWorker.register(
+    URL.createObjectURL(new Blob([swCode],{type:'application/javascript'}))
+  ).catch(()=>{});
+}
+
+/* ── 앱 상태 ── */
+const FONTS = {
+  CourierNew:    "'Courier New', Courier, monospace",
+  SpaceMono:     "'Space Mono', monospace",
+  IBMPlexMono:   "'IBM Plex Mono', monospace",
+  HelveticaNeue: "'Helvetica Neue', Helvetica, Arial, sans-serif",
+  Inter:         "'Inter', sans-serif",
+};
+
+let currentImg     = null;
+let selectedFont   = FONTS.CourierNew;
+let ratioW = 0, ratioH = 0;
+let frameColor     = '#ffffff';
+let borderOn       = false;
+let borderColor    = '#000000';
+let borderPx       = 3;
+let infoFontSizePx = 20;
+let infoGapPx      = 40;
+let txtFontSizePx  = 20;
+let txtGapTopPx    = 16;
+let txtGapBotPx    = 16;
+
+const boldState = {
+  f_camera:true, f_film:false, f_lens:false,
+  f_date:true,   f_location:false, f_author:false,
+  t_topleft:false, t_topcenter:false, t_topright:false,
+  t_botleft:false, t_botcenter:false, t_botright:false,
+};
+
+const canvas = document.getElementById('preview');
+const ctx    = canvas.getContext('2d');
+const dlBtn  = document.getElementById('dlBtn');
+const ph     = document.getElementById('ph');
+
+document.fonts.ready.catch(()=>{});
+
+/* 업로드 */
+const uploadArea = document.getElementById('uploadArea');
+const fileInput  = document.getElementById('fileInput');
+uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.style.background='#e8e6e2'; });
+uploadArea.addEventListener('dragleave', () => { uploadArea.style.background=''; });
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault(); uploadArea.style.background='';
+  if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) load(e.target.files[0]); });
+
+function load(file) {
+  const r = new FileReader();
+  r.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      currentImg = img;
+      canvas.style.display='block'; ph.style.display='none';
+      dlBtn.disabled=false; render();
+    };
+    img.src = ev.target.result;
+  };
+  r.readAsDataURL(file);
+}
+
+/* 비율 */
+const customRatioEl = document.getElementById('customRatio');
+const customW = document.getElementById('customW');
+const customH = document.getElementById('customH');
+document.getElementById('ratioOpts').querySelectorAll('.chip').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('#ratioOpts .chip').forEach(x=>x.classList.remove('on'));
+    el.classList.add('on');
+    if (el.dataset.w==='custom') {
+      customRatioEl.classList.add('show');
+      ratioW=parseFloat(customW.value)||3; ratioH=parseFloat(customH.value)||2;
+    } else {
+      customRatioEl.classList.remove('show');
+      ratioW=parseFloat(el.dataset.w); ratioH=parseFloat(el.dataset.h);
+    }
+    if (currentImg) render();
+  });
+});
+[customW,customH].forEach(inp=>inp.addEventListener('input',()=>{
+  ratioW=parseFloat(customW.value)||1; ratioH=parseFloat(customH.value)||1;
+  if(currentImg)render();
+}));
+
+/* 색상 */
+document.getElementById('frameColor').addEventListener('input',function(){frameColor=this.value;if(currentImg)render();});
+document.getElementById('borderColor').addEventListener('input',function(){borderColor=this.value;if(currentImg)render();});
+
+/* 테두리 */
+document.getElementById('borderToggle').querySelectorAll('.chip').forEach(el=>{
+  el.addEventListener('click',()=>{
+    document.querySelectorAll('#borderToggle .chip').forEach(x=>x.classList.remove('on'));
+    el.classList.add('on'); borderOn=el.dataset.v==='on';
+    document.getElementById('borderOptions').style.display=borderOn?'block':'none';
+    if(currentImg)render();
+  });
+});
+[['borderThick','borderThickNum'],['borderThickNum','borderThick']].forEach(([a,b])=>{
+  document.getElementById(a).addEventListener('input',function(){
+    borderPx=Math.min(100,Math.max(1,parseInt(this.value)||1));
+    document.getElementById(b).value=Math.min(100,borderPx);
+    if(currentImg)render();
+  });
+});
+
+/* 글꼴 */
+document.getElementById('fontOpts').querySelectorAll('.chip').forEach(el=>{
+  el.addEventListener('click',async()=>{
+    document.querySelectorAll('#fontOpts .chip').forEach(x=>x.classList.remove('on'));
+    el.classList.add('on'); selectedFont=FONTS[el.dataset.font];
+    await document.fonts.ready; if(currentImg)render();
+  });
+});
+
+/* 슬라이더 헬퍼 */
+function makeSlider(rangeId,numId,min,max,setter){
+  const range=document.getElementById(rangeId),num=document.getElementById(numId);
+  const upd=v=>{v=Math.min(max,Math.max(min,parseInt(v)||min));setter(v);range.value=Math.min(max,v);num.value=v;if(currentImg)render();};
+  range.addEventListener('input',function(){upd(this.value);});
+  num.addEventListener('input',function(){upd(this.value);});
+}
+makeSlider('infoFontSize','infoFontSizeNum',8,400,v=>{infoFontSizePx=v;});
+makeSlider('infoGap',     'infoGapNum',     0,400,v=>{infoGapPx=v;});
+makeSlider('txtFontSize', 'txtFontSizeNum', 8,400,v=>{txtFontSizePx=v;});
+makeSlider('txtGapTop',   'txtGapTopNum',   0,400,v=>{txtGapTopPx=v;});
+makeSlider('txtGapBot',   'txtGapBotNum',   0,400,v=>{txtGapBotPx=v;});
+
+/* 굵기 */
+document.querySelectorAll('.bb').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const t=btn.dataset.t; boldState[t]=!boldState[t];
+    btn.classList.toggle('on',boldState[t]); if(currentImg)render();
+  });
+});
+
+/* 입력 감지 */
+['f_camera','f_film','f_lens','f_date','f_location','f_author',
+ 't_topleft','t_topcenter','t_topright','t_botleft','t_botcenter','t_botright']
+.forEach(id=>document.getElementById(id).addEventListener('input',()=>{if(currentImg)render();}));
+['c_camera','c_film','c_lens','c_date','c_location','c_author',
+ 'c_topleft','c_topcenter','c_topright','c_botleft','c_botcenter','c_botright']
+.forEach(id=>document.getElementById(id).addEventListener('input',()=>{if(currentImg)render();}));
+
+function gv(id){return document.getElementById(id).value.trim();}
+function gc(id){return document.getElementById(id).value;}
+function bw(id){return boldState[id]?'bold':'normal';}
+
+/* ── 렌더 ── */
+function render(){
+  if(!currentImg)return;
+
+  const srcW=currentImg.naturalWidth, srcH=currentImg.naturalHeight;
+  const srcRatio=srcW/srcH;
+  const isOriginal=(ratioW===0&&ratioH===0);
+  const outRatio=isOriginal?srcRatio:(ratioW/ratioH);
+
+  const OUT_W=srcW;
+  const OUT_H=Math.round(OUT_W/outRatio);
+  canvas.width=OUT_W; canvas.height=OUT_H;
+
+  /* 배경 */
+  ctx.fillStyle=frameColor; ctx.fillRect(0,0,OUT_W,OUT_H);
+
+  /* 고정 사이드 여백 */
+  const sidePx=Math.round(OUT_W*0.04);
+  const fixedTop=Math.round(OUT_H*0.035);
+  const fixedBot=Math.round(OUT_H*0.035);
+
+  /* 텍스트 블록 높이 */
+  const infoLineH=infoFontSizePx*1.72;
+  const hasTxtTop=gv('t_topleft')||gv('t_topcenter')||gv('t_topright');
+  const hasTxtBot=gv('t_botleft')||gv('t_botcenter')||gv('t_botright');
+  const hasInfo  =gv('f_camera')||gv('f_film')||gv('f_lens')||
+                   gv('f_date')||gv('f_location')||gv('f_author');
+
+  /* 사진 위 텍스트 블록이 차지하는 높이:
+     베이스라인 = photoTop - txtGapTopPx
+     → 블록이 차지하는 공간 = txtGapTopPx + txtFontSizePx (대략)
+     단, gap=0일 때 사진과 텍스트가 겹치지 않으려면
+     txtFontSizePx 만큼 위 여유 필요 */
+  const txtTopBlockH = hasTxtTop ? (txtGapTopPx + txtFontSizePx) : 0;
+  const txtBotBlockH = hasTxtBot ? (txtGapBotPx + txtFontSizePx) : 0;
+  const infoBlockH   = hasInfo   ? (infoGapPx   + Math.ceil(infoLineH*3))  : 0;
+
+  /* 사진 영역 */
+  const photoZoneY = fixedTop + txtTopBlockH;
+  const photoZoneH = OUT_H - fixedTop - txtTopBlockH - txtBotBlockH - infoBlockH - fixedBot;
+  const photoZoneW = OUT_W - sidePx*2;
+  const photoZoneX = sidePx;
+
+  /* letterbox */
+  const zoneRatio=photoZoneW/Math.max(photoZoneH,1);
+  let imgW,imgH;
+  if(srcRatio>zoneRatio){imgW=photoZoneW; imgH=Math.round(photoZoneW/srcRatio);}
+  else{imgH=Math.max(1,photoZoneH); imgW=Math.round(photoZoneH*srcRatio);}
+  const imgX=photoZoneX+Math.round((photoZoneW-imgW)/2);
+  const imgY=photoZoneY+Math.round((photoZoneH-imgH)/2);
+  ctx.drawImage(currentImg,imgX,imgY,imgW,imgH);
+
+  /* 사진 실제 가장자리 */
+  const pL=imgX, pR=imgX+imgW, pT=imgY, pB=imgY+imgH, pCX=imgX+imgW/2;
+
+  /* 텍스트 입력 — 사진 위
+     베이스라인 = 사진 상단 - txtGapTopPx
+     (gap=0 → 베이스라인이 사진 상단 y와 같음, 텍스트가 바로 위에 붙음) */
+  if(hasTxtTop){
+    const ty=pT-txtGapTopPx;
+    const draw=(id,x,align)=>{
+      const v=gv(id);if(!v)return;
+      ctx.font=`${bw(id)} ${txtFontSizePx}px ${selectedFont}`;
+      ctx.fillStyle=gc('c_'+id.slice(2)); ctx.textAlign=align;
+      ctx.fillText(v,x,ty);
+    };
+    draw('t_topleft',  pL,'left');
+    draw('t_topcenter',pCX,'center');
+    draw('t_topright', pR,'right');
+  }
+
+  /* 텍스트 입력 — 사진 아래
+     베이스라인 = 사진 하단 + txtGapBotPx + txtFontSizePx
+     (gap=0 → 텍스트 상단이 사진 하단에 붙음) */
+  if(hasTxtBot){
+    const ty=pB+txtGapBotPx+txtFontSizePx;
+    const draw=(id,x,align)=>{
+      const v=gv(id);if(!v)return;
+      ctx.font=`${bw(id)} ${txtFontSizePx}px ${selectedFont}`;
+      ctx.fillStyle=gc('c_'+id.slice(2)); ctx.textAlign=align;
+      ctx.fillText(v,x,ty);
+    };
+    draw('t_botleft',  pL,'left');
+    draw('t_botcenter',pCX,'center');
+    draw('t_botright', pR,'right');
+  }
+
+  /* 사진 정보 (하단)
+     1행 베이스라인 = 사진 하단 + infoGapPx + infoFontSizePx */
+  if(hasInfo){
+    const startY=pB+infoGapPx+infoFontSizePx;
+    ['f_camera','f_film','f_lens'].forEach((id,i)=>{
+      const v=gv(id);if(!v)return;
+      ctx.font=`${bw(id)} ${infoFontSizePx}px ${selectedFont}`;
+      ctx.fillStyle=gc('c_'+id.slice(2)); ctx.textAlign='left';
+      ctx.fillText(v,pL,startY+i*Math.round(infoLineH));
+    });
+    ['f_date','f_location','f_author'].forEach((id,i)=>{
+      const v=gv(id);if(!v)return;
+      ctx.font=`${bw(id)} ${infoFontSizePx}px ${selectedFont}`;
+      ctx.fillStyle=gc('c_'+id.slice(2)); ctx.textAlign='right';
+      ctx.fillText(v,pR,startY+i*Math.round(infoLineH));
+    });
+  }
+
+  /* 테두리 */
+  if(borderOn&&borderPx>0){
+    const inset=borderPx/2;
+    ctx.strokeStyle=borderColor; ctx.lineWidth=borderPx;
+    ctx.strokeRect(inset,inset,OUT_W-borderPx,OUT_H-borderPx);
+  }
+}
+
+/* 다운로드 */
+dlBtn.addEventListener('click',()=>{
+  const customName=document.getElementById('filename').value.trim();
+  let filename;
+  if(customName){filename=customName.replace(/[\\/:*?"<>|]/g,'_');}
+  else{
+    const film=gv('f_film').replace(/\s+/g,'_')||'film';
+    const date=gv('f_date').replace(/[\s/\\:*?"<>|]+/g,'-')||'nodate';
+    filename=`${film}_${date}`;
+  }
+  canvas.toBlob(blob=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download=filename+'.png';
+    a.click(); URL.revokeObjectURL(a.href);
+  },'image/png');
+});
+</script>
+</body>
+</html>
